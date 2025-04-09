@@ -2,40 +2,52 @@ import tkinter
 from tkinter import *
 from tkinter import messagebox
 from characters import letters, cap_let, numbers, special
-import json
 import random
+from sqlalchemy.orm import sessionmaker, DeclarativeBase, mapped_column, Mapped
+from sqlalchemy import Integer, String, create_engine
+from sqlalchemy.exc import IntegrityError
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class PasswordEntrance(Base):
+    __tablename__ = 'passwords'
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    site: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    email: Mapped[str] = mapped_column(String(100), nullable=False)
+    password: Mapped[str] = mapped_column(String(25), nullable=False)
+
+
+engine = create_engine('sqlite:///passwords.db', echo=True)
+
+Base.metadata.create_all(engine)
+
+
+Session = sessionmaker(bind=engine)
+session = Session()
 
 
 def add_values():
-    email_get = email_entry.get()
-    site = app_name_entry.get().title()
-    u_password = password_entry.get()
-    add_json = {
-        site: {
-            "email": email_get,
-            "password": u_password
-        }
-    }
-    if len(email_get) == 0 and len(site) == 0 and len(u_password) == 0:
-        messagebox.askokcancel(title="Warning!", message='dont leave nothing empty!')
+    app_email = email_entry.get()
+    app_site = app_name_entry.get()
+    app_password = password_entry.get()
+
+    if len(app_email) == 0 or len(app_site) == 0 or len(app_password) == 0:
+        messagebox.askokcancel(title='Warning!', message='Não deixe os campos vazios!')
     else:
-        file_path = "file.json"
-
         try:
-            with open(file_path, "r") as file:
-                try:
-                    data = json.load(file)
-                    if not isinstance(data, dict):
-                        data = {}
-                except json.JSONDecodeError:
-                    data = {}
-        except FileNotFoundError:
-            data = {}
-
-        data.update(add_json)
-
-        with open(file_path, "w") as file:
-            json.dump(data, file, indent=4)
+            novos_dados = PasswordEntrance(site=app_site, email=app_email, password=app_password)
+            session.add(novos_dados)
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            messagebox.showwarning(title='Erro', message=f'O site informado já está cadastrado no banco de dados. '
+                                                         f'Use a funcionalidade "Search"')
+        except Exception as e:
+            session.rollback()
+            messagebox.showerror(title='Erro inesperado', message=f"Ocorreu um erro: {e}")
 
 
 def generate_password():
@@ -48,14 +60,12 @@ def generate_password():
 
 
 def search_info():
-    user_info = app_name_entry.get().title()
-    with open('file.json', 'r') as f:
-        data = json.load(f)
-        try:
-            info = data[user_info]
-            messagebox.showinfo(title='Info', message=f"Email: {info['email']}\nPassword: {info['password']}")
-        except KeyError:
-            messagebox.askokcancel(title='Warning!', message=f"{user_info} is not in the database.")
+    user_entrada = app_name_entry.get().title()
+    resultado = session.query(PasswordEntrance).filter_by(site=user_entrada).first()
+    if resultado:
+        messagebox.showinfo(title='Sucesso!', message=f'Email: {resultado.email} \n Senha: {resultado.password}')
+    else:
+        messagebox.showerror(title='Não encontrado', message='O site informado não está no banco de dados.')
 
 
 tk_window = tkinter.Tk()
